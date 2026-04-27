@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Whack-A-Word: Split Screen Duel</title>
+    <link href="https://fonts.googleapis.com/css2?family=Balsamiq+Sans:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <style>
+        body {
+            font-family: 'Balsamiq Sans', cursive, sans-serif;
+            margin: 0;
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background-color: #212529;
+        }
+
+        /* --- Top UI (Mission Box) --- */
+        .ui-layer {
+            position: absolute;
+            top: 20px;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .mission-box {
+            background: white;
+            border: 8px solid #15aabf;
+            border-radius: 30px;
+            padding: 15px 55px;
+            text-align: center;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            transform: scale(1.3);
+            transform-origin: top center;
+            transition: all 0.3s ease;
+        }
+
+        /* Double Points Style */
+        .mission-box.double-points {
+            border-color: #fcc419;
+            background-color: #fff9db;
+            box-shadow: 0 0 30px #fcc419;
+        }
+
+        .chinese-translation { font-size: 50px; color: #e64980; font-weight: bold; line-height: 1.1; }
+        .timer-val { font-size: 32px; color: #fa5252; font-weight: bold; }
+        .bonus-label { font-size: 14px; color: #f08c00; font-weight: bold; display: none; }
+
+        /* --- Split Screen Layout --- */
+        .battle-arena {
+            display: flex;
+            flex: 1;
+            width: 100%;
+        }
+
+        .side {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            padding-top: 120px;
+        }
+
+        .side-title { font-size: 36px; font-weight: bold; position: absolute; top: 120px; }
+        .team-a-side { background-color: #e7f5ff; border-right: 4px solid #212529; }
+        .team-b-side { background-color: #fff4e6; }
+
+        /* --- Penalty Freeze Overlay --- */
+        .freeze-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.4);
+            color: white;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            font-size: 80px;
+            font-weight: bold;
+            z-index: 5;
+            pointer-events: all;
+        }
+
+        .score-display {
+            font-size: 100px;
+            font-weight: bold;
+            position: absolute;
+            bottom: 40px;
+            opacity: 0.2;
+        }
+
+        /* --- Game Elements --- */
+        .game-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 280px);
+            gap: 40px;
+            padding: 20px;
+        }
+
+        .hole {
+            width: 280px;
+            height: 280px;
+            background-color: #343a40;
+            border-radius: 50%;
+            position: relative;
+            overflow: hidden;
+            box-shadow: inset 0 15px 0 rgba(0,0,0,0.6);
+            border: 8px solid rgba(0,0,0,0.1);
+        }
+
+        .word-mole {
+            width: 100%; height: 100%;
+            background-color: #ffec99;
+            border-radius: 50% 50% 0 0;
+            position: absolute;
+            top: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 34px;
+            font-weight: bold;
+            color: #333;
+            cursor: pointer;
+            transition: top 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            border: 6px solid #fcc419;
+            box-sizing: border-box;
+            text-align: center;
+            padding: 15px;
+        }
+
+        .word-mole.up { top: 15%; }
+
+        #ready-overlay, #results-page {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: white;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+
+        #ready-overlay { font-size: 150px; color: #15aabf; font-weight: bold; }
+        .winner-text { font-size: 80px; margin-bottom: 20px; font-weight: bold; text-align: center;}
+
+        .btn {
+            padding: 15px 50px;
+            font-size: 28px;
+            background: #15aabf;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            box-shadow: 0 8px 0 #0b7285;
+            font-family: 'Balsamiq Sans';
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ready-overlay">3</div>
+
+    <div id="results-page">
+        <div id="winner-announcement" class="winner-text">Team Blue Wins!</div>
+        <div style="font-size: 30px; margin-bottom: 30px; color: #555;">
+            Blue: <span id="final-a">0</span> | Orange: <span id="final-b">0</span>
+        </div>
+        <button class="btn" onclick="location.reload()">Restart Duel</button>
+    </div>
+
+    <div class="ui-layer">
+        <div class="mission-box" id="mission-box">
+            <div id="chinese-word" class="chinese-translation">READY?</div>
+            <div id="timer" class="timer-val">120</div>
+            <div id="bonus-label" class="bonus-label">🔥 DOUBLE POINTS 🔥</div>
+        </div>
+    </div>
+
+    <div class="battle-arena">
+        <div class="side team-a-side" id="side-A">
+            <div class="freeze-overlay" id="freeze-A">3</div>
+            <div class="side-title" style="color: #1971c2;">TEAM BLUE</div>
+            <div class="game-grid">
+                <div class="hole"><div class="word-mole" id="mole-a-0" onclick="whack('A', 0)"></div></div>
+                <div class="hole"><div class="word-mole" id="mole-a-1" onclick="whack('A', 1)"></div></div>
+            </div>
+            <div class="score-display" id="score-a">0</div>
+        </div>
+
+        <div class="side team-b-side" id="side-B">
+            <div class="freeze-overlay" id="freeze-B">3</div>
+            <div class="side-title" style="color: #e67e22;">TEAM ORANGE</div>
+            <div class="game-grid">
+                <div class="hole"><div class="word-mole" id="mole-b-0" onclick="whack('B', 0)"></div></div>
+                <div class="hole"><div class="word-mole" id="mole-b-1" onclick="whack('B', 1)"></div></div>
+            </div>
+            <div class="score-display" id="score-b">0</div>
+        </div>
+    </div>
+
+    <div style="position:absolute; bottom: 30px; width:100%; display:flex; justify-content:center; z-index:20;">
+        <button class="btn" id="startBtn" onclick="prepareGame()">Start Duel</button>
+    </div>
+
+    <script>
+        const molesA = [document.getElementById('mole-a-0'), document.getElementById('mole-a-1')];
+        const molesB = [document.getElementById('mole-b-0'), document.getElementById('mole-b-1')];
+        const timerDisplay = document.getElementById('timer');
+        const chineseDisplay = document.getElementById('chinese-word');
+        const missionBox = document.getElementById('mission-box');
+        const bonusLabel = document.getElementById('bonus-label');
+        const overlay = document.getElementById('ready-overlay');
+        
+        const vocab = [
+            { correct: 'breakfast', wrong: 'breakfest', zh: '早餐' },
+            { correct: 'lunch', wrong: 'lunchh', zh: '午餐' },
+            { correct: 'dinner', wrong: 'diner', zh: '晚餐' },
+            { correct: 'soup', wrong: 'soop', zh: '湯' },
+            { correct: 'salad', wrong: 'salat', zh: '沙拉' },
+            { correct: 'bread', wrong: 'bred', zh: '麵包' },
+            { correct: 'chicken', wrong: 'chiken', zh: '雞肉' },
+            { correct: 'noodles', wrong: 'nodles', zh: '麵條' }
+        ];
+        
+        let timeUp = true;
+        let isDoublePoints = false;
+        let scoreA = 0, scoreB = 0;
+        let currentMission = {};
+        let audioCtx;
+        let frozenA = false, frozenB = false;
+
+        function initAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+
+        function playTone(freq, type, duration, volume) {
+            if(!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + duration);
+        }
+
+        function speak(text) {
+            window.speechSynthesis.cancel();
+            const msg = new SpeechSynthesisUtterance(text);
+            msg.lang = 'en-US'; msg.rate = 0.9;
+            window.speechSynthesis.speak(msg);
+        }
+
+        function spawnRound() {
+            if (timeUp) return;
+            currentMission = vocab[Math.floor(Math.random() * vocab.length)];
+            chineseDisplay.textContent = currentMission.zh;
+            speak(currentMission.correct);
+
+            const aCorrectIndex = Math.random() < 0.5 ? 0 : 1;
+            molesA[aCorrectIndex].textContent = currentMission.correct;
+            molesA[1 - aCorrectIndex].textContent = currentMission.wrong;
+
+            const bCorrectIndex = Math.random() < 0.5 ? 0 : 1;
+            molesB[bCorrectIndex].textContent = currentMission.correct;
+            molesB[1 - bCorrectIndex].textContent = currentMission.wrong;
+
+            [...molesA, ...molesB].forEach(m => {
+                m.style.backgroundColor = isDoublePoints ? "#fff9db" : "#ffec99";
+                if(isDoublePoints) m.style.borderColor = "#fcc419";
+                m.classList.add('up');
+            });
+        }
+
+        function freezeTeam(team) {
+            const overlay = document.getElementById('freeze-' + team);
+            if (team === 'A') frozenA = true; else frozenB = true;
+            
+            overlay.style.display = 'flex';
+            let timeLeft = 3;
+            overlay.textContent = timeLeft;
+
+            const interval = setInterval(() => {
+                timeLeft--;
+                if (timeLeft > 0) {
+                    overlay.textContent = timeLeft;
+                } else {
+                    clearInterval(interval);
+                    overlay.style.display = 'none';
+                    if (team === 'A') frozenA = false; else frozenB = false;
+                }
+            }, 1000);
+        }
+
+        function prepareGame() {
+            initAudio();
+            document.getElementById('startBtn').style.display = 'none';
+            overlay.style.display = 'flex';
+            let count = 3;
+            overlay.textContent = count;
+            const timer = setInterval(() => {
+                count--;
+                if (count > 0) overlay.textContent = count;
+                else if (count === 0) overlay.textContent = "BATTLE!";
+                else { clearInterval(timer); overlay.style.display = 'none'; startGame(); }
+            }, 1000);
+        }
+
+        function startGame() {
+            timeUp = false; scoreA = 0; scoreB = 0;
+            isDoublePoints = false;
+            document.getElementById('score-a').textContent = 0;
+            document.getElementById('score-b').textContent = 0;
+            let timeLeft = 120;
+            timerDisplay.textContent = timeLeft;
+            spawnRound();
+            const countdown = setInterval(() => {
+                timeLeft--;
+                timerDisplay.textContent = timeLeft;
+
+                // Enter Double Points Mode
+                if (timeLeft === 10) {
+                    isDoublePoints = true;
+                    missionBox.classList.add('double-points');
+                    bonusLabel.style.display = 'block';
+                    playTone(660, 'sine', 0.5, 0.1);
+                }
+
+                if (timeLeft <= 0) { clearInterval(countdown); endGame(); }
+            }, 1000);
+        }
+
+        function whack(team, index) {
+            if (timeUp || (team === 'A' && frozenA) || (team === 'B' && frozenB)) return;
+            const targetMole = (team === 'A') ? molesA[index] : molesB[index];
+
+            if (targetMole.textContent === currentMission.correct) {
+                playTone(880, 'sine', 0.1, 0.1);
+                const pointsToAdd = isDoublePoints ? 2 : 1;
+                
+                if (team === 'A') scoreA += pointsToAdd; else scoreB += pointsToAdd;
+                
+                document.getElementById('score-a').textContent = scoreA;
+                document.getElementById('score-b').textContent = scoreB;
+                [...molesA, ...molesB].forEach(m => m.classList.remove('up'));
+                setTimeout(spawnRound, 300);
+            } else {
+                playTone(150, 'sawtooth', 0.2, 0.1);
+                targetMole.style.backgroundColor = "#ff8787";
+                if (team === 'A' && scoreA > 0) scoreA--;
+                if (team === 'B' && scoreB > 0) scoreB--;
+                document.getElementById('score-a').textContent = scoreA;
+                document.getElementById('score-b').textContent = scoreB;
+                freezeTeam(team);
+            }
+        }
+
+        function endGame() {
+            timeUp = true;
+            [...molesA, ...molesB].forEach(m => m.classList.remove('up'));
+            const winText = document.getElementById('winner-announcement');
+            if (scoreA > scoreB) { winText.textContent = "TEAM BLUE WINS! 🏆"; winText.style.color = "#1971c2"; }
+            else if (scoreB > scoreA) { winText.textContent = "TEAM ORANGE WINS! 🏆"; winText.style.color = "#e67e22"; }
+            else { winText.textContent = "IT'S A TIE! 🤝"; winText.style.color = "#333"; }
+            document.getElementById('final-a').textContent = scoreA;
+            document.getElementById('final-b').textContent = scoreB;
+            document.getElementById('results-page').style.display = 'flex';
+            confetti({ particleCount: 200, spread: 80, origin: { y: 0.6 } });
+        }
+    </script>
+</body>
+</html>
